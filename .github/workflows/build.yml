@@ -1,0 +1,49 @@
+name: Build
+
+# Builds wdi-installer.exe natively with MSVC on windows-latest.
+#
+# This has to happen outside of MSYS2/MinGW: libwdi-sys compiles libwdi's
+# C sources and needs cl.exe, which a MinGW shell doesn't provide.
+# windows-latest has MSVC preinstalled, so the only extra setup needed is
+# the WDK 8.0 redistributable below.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # libwdi embeds WdfCoInstaller####.dll into the WinUSB driver
+      # package it generates (see embedder_files.h / winusb.inf.in in
+      # libwdi-sys's vendored sources). That file isn't part of Visual
+      # Studio or a modern Windows SDK — only of the old WDK 8.0
+      # redistributable. libwdi-sys's build.rs has a hardcoded default
+      # path (`C:/Program Files (x86)/Windows Kits/8.0`, see libwdi's own
+      # msvc/config.h) that assumes this WDK is already installed, which
+      # it isn't on windows-latest. This step reproduces what libwdi's
+      # own upstream CI does (see libwdi/.github/workflows/vs2022.yml,
+      # vendored inside libwdi-sys): `msiexec /a` just extracts the MSI's
+      # contents into a folder, it doesn't install anything system-wide.
+      - name: Fetch the WDK 8.0 redistributable (provides WdfCoInstaller, required by libwdi)
+        shell: cmd
+        run: |
+          curl -L https://go.microsoft.com/fwlink/p/?LinkID=253170 -o wdk-redist.msi
+          msiexec /a wdk-redist.msi /qn TARGETDIR=%CD%\wdk
+
+      # WDK_DIR is required even for a fully native build, not only when
+      # cross-compiling as libwdi-sys's own error message suggests.
+      - name: Build (MSVC)
+        env:
+          WDK_DIR: ${{ github.workspace }}\wdk\Windows Kits\8.0
+        run: cargo build --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wdi-installer
+          path: target/release/wdi-installer.exe
+          if-no-files-found: error

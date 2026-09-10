@@ -1,0 +1,35 @@
+[package]
+name = "wdi-installer"
+version = "1.0.0"
+edition = "2021"
+description = "Installs the WinUSB driver for a given USB device (VID/PID) via libwdi."
+license = "MIT OR Apache-2.0"
+publish = false
+
+# This crate is deliberately standalone (its own Cargo.toml/Cargo.lock,
+# not part of a larger workspace): libwdi-sys needs the MSVC toolchain
+# (cl.exe) to compile the elevated driver installer it embeds, which
+# rules out consuming it from a project built entirely with MinGW (a
+# common setup for cross-platform Rust apps that also depend on
+# MinGW-only native libraries). Keeping it separate means it can have
+# its own CI (.github/workflows/build.yml), building natively on a
+# windows-latest runner where MSVC is already present, regardless of
+# what toolchain the consuming application uses elsewhere — the
+# resulting .exe is just invoked as a subprocess.
+#
+# See README.md for why this lives in its own repository rather than as
+# a subfolder of a larger, closed-source application.
+[dependencies]
+# enable-arm64 is disabled: this tool only targets x64 devices, and an
+# ARM64 MSVC toolset isn't guaranteed to be present wherever this is built.
+wdi = { version = "0.1.5", default-features = false, features = ["enable-x86"] }
+# `freopen` (see main.rs, `--log-file`): this binary is meant to already
+# be running elevated by the time it starts (see the doc comment in
+# main.rs for why). Windows' `ShellExecuteEx`/"runas" — the usual way to
+# launch an elevated process — cannot redirect stdout/stderr to a pipe
+# owned by the (non-elevated) caller, since the two processes run under
+# different security tokens. `freopen` redirects the C runtime's own
+# stdout to a file instead, which also captures libwdi's internal
+# logging (`wdi_info`/`wdi_err`, printed via printf/fprintf on the C
+# side) and not just the lines this crate prints itself.
+libc = "0.2"
