@@ -42,7 +42,7 @@ jobs:
           WDK_DIR: ${{ github.workspace }}\wdk\Windows Kits\8.0
         run: cargo build --release
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: wdi-installer
           path: target/release/wdi-installer.exe
